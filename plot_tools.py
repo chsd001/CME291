@@ -6,6 +6,33 @@ import plotly.graph_objs as go
 from sklearn.decomposition import PCA
 import numpy as np
 
+def plot_scatter(x, y, label, mode='markers+lines'):
+    data_plot = []
+    for i in range(len(y)):
+        trace = go.Scattergl(
+            x = x,
+            y = y[i],
+            mode = mode,
+            name = str(label[i])
+        )
+        data_plot.append(trace)
+    layout = go.Layout(
+        xaxis = dict(
+            showline = True,
+            zeroline = True,
+        ),
+        yaxis = dict(
+            showline = True,
+            zeroline = True,
+        )
+    )
+    fig = go.Figure(data=data_plot, layout=layout)
+    iplot(fig)
+
+def plot_df(data, mode='markers+lines'):
+    df = pd.DataFrame(data)
+    plot_scatter(df.index, df.T.values, df.columns, mode)
+
 def plot_corr_heatmap(data, fixed=True):
     layout = go.Layout(
             autosize=True,
@@ -16,7 +43,7 @@ def plot_corr_heatmap(data, fixed=True):
     if fixed:
         data_plot = [go.Heatmap(z=data.values.tolist(), x=data.columns, y=data.columns, colorscale='RdBu', zmin=-1, zmax=1)]
     else:
-        data_plot = [go.Heatmap(z=data.values.tolist(), x=data.columns, y=data.columns, colorscale='RdBu')]
+        data_plot = [go.Heatmap(z=data.values.tolist(), x=data.columns, y=data.columns, colorscale='RdBu', zmid=0)]
     fig = go.Figure(data=data_plot, layout=layout)
     iplot(fig)
 
@@ -35,3 +62,7 @@ def plot_pca(data, retName):
     plotData = plotData*np.sign(np.sum(pca.components_, axis=1))
     plot_df_heatmap(plotData, strindex, plotData.columns)
     return 
+
+def plot_pred_corr(data, x, y):
+    df = data.groupby('ticker')[[x,y]].apply(lambda x: x.corr().iat[0,1])
+    return df
