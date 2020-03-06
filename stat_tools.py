@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import cvxpy as cvx
 from statsmodels.regression.linear_model import WLS
 
 
@@ -18,7 +19,7 @@ def cross_center(data, colName, weightCol=None, newColName=None):
         newColName=colName+'-c'
 
     #weightSum = data.ticker.drop_duplicates().count() if weightCol==None else data.groupby('datetime')[weightCol].transform('sum')
-    data[newColName] = data[colName] - data.groupby('datetime')[colName].transform('mean')
+    data[newColName] = data[colName] - data.groupby(data.index.name)[colName].transform('mean')
 
 def wmean(data, colName, weightCol, newColName=None):
     if newColName==None:
@@ -41,8 +42,8 @@ def compute_volume(data, volumeName, colName, periods):
 def compute_volatility(data, retName, colName, periods):
     data[colName] = data.groupby('ticker')[retName].transform(lambda x: x.rolling(periods).std())
 
-def cross_correlation(data, retName):
-    return data.pivot(columns = 'ticker', values = retName).corr()
+def cross_correlation(data, retName, norm=True):
+    return data.pivot(columns = 'ticker', values = retName).corr() if norm==True else data.pivot(columns = 'ticker', values = retName).cov()
 
 def lagged_correlation(data, retName, lag):
     t = data.pivot(columns = 'ticker', values = retName)
@@ -54,22 +55,23 @@ def lagged_correlation(data, retName, lag):
     t.columns = tickers
     return t.loc[tickers]
 
-def run_regression(data, target, predictors, predict=None, weightCol = None):
+def run_regression(data, target, predictors, fpred, predict=None, weightCol = None):
     weights = 1 if weightCol == None else data[weightCol]
     model = WLS(data[target], data[predictors], weights = weights)
     results = model.fit()
     coeffs = pd.DataFrame(results.params).transpose()
-    y = None if type(predict)==type(None) else predict[target] - results.predict(predict[predictors])
+    y = None if type(predict)==type(None) else predict[target] - results.predict(predict[fpred])
     return coeffs, y
 
-def exposure_regression(data, target, predictors, resCol):
+def exposure_regression(data, target, predictors, resCol, fpred = None):
+    fpred = predictors if type(fpred)==type(None) else fpred
     n_period = data.period.max()
     tickers = data.ticker.unique()
     coeffs = {}
     for ticker in tickers:
         coeffs[ticker] = []
         for i in range(0, n_period):
-            coeffs_i,  y_i= run_regression(data[(data.period <= i) & (data.ticker==ticker)], target, predictors, data[(data.period == i+1) & (data.ticker==ticker)], None)
+            coeffs_i,  y_i= run_regression(data[(data.period <= i) & (data.ticker==ticker)], target, predictors, fpred, data[(data.period == i+1) & (data.ticker==ticker)], None)
             coeffs[ticker].append(coeffs_i)
             data.loc[(data.period == i+1) & (data.ticker == ticker), resCol] = y_i
         coeffs[ticker] = pd.concat(coeffs[ticker]).reset_index(drop=True)
@@ -93,6 +95,35 @@ def replicating_portfolio(data, factors, weightCol=None):
         X = X.reshape((X.shape[0], 1))
     W = np.diag(data[weightCol]) if weightCol != None else np.eye(X.shape[0])
     F = np.linalg.inv(X.T.dot(W).dot(X)).dot(X.T).dot(W)
-    return pd.DataFrame(F, columns = data.ticker, index = factors)
+    return pd.DataFrame(F, columns = data.ticker, index = pd.Series(factors,name='factor'))
 
-    
+def targetPos(prevx, p, c, l, sigma):
+    x = cvx.Variable(prevx.size)
+    constraints = []
+    constraints.append(cvx.sum(cvx.abs(x)) <= 1)
+    constraints.append(cvx.abs(x) <= 0.5)
+    prob = cvx.Problem(cvx.Minimize(-p.T*x + c*cvx.sum(cvx.abs(x-prevx)) + l*cvx.quad_form(x, sigma)), constraints)
+    prob.solve()
+    return x.value
+
+def markowitz(data, retName, predName, covMat, c, l):
+    p = data.ticker.unique().size
+    results = pd.DataFrame(index = data.index.unique(), columns = ['value', 'return'])
+    curQty = np.zeros(p)
+    curTot = 1
+    for d in results.index:
+        cross = data.loc[d].sort_values('ticker')
+        x = targetPos(curQty, cross[predName].values, c, l, covMat[cross['period'].values[0] - 1])
+        ret = x.dot(cross[retName].values)
+        curTot *= (1+1e-4*ret)
+        results.loc[d, 'return'] = ret
+        results.loc[d, 'value'] = curTot
+        curQty = x
+    return results
+
+def computeOU(data, colName):
+    V = data.groupby('ticker')[colName].var()
+    C = data.groupby('ticker')[colName].apply(lambda x:np.cov(x[1:], x.shift()[1:])[0,1])
+    eps = np.log(V/C)
+    eps = eps.mean().round(3)
+    return eps
