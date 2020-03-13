@@ -5,6 +5,22 @@ import plotly.graph_objs as go
 
 from sklearn.decomposition import PCA
 import numpy as np
+import matplotlib.pyplot as plt
+
+def pyplot_scatter(x, y, label, mode='markers+lines'):
+    plt.figure(figsize=[15,7])
+    for i in range(len(y)):
+        if mode=='markers+lines':
+            plt.plot(x, y[i], marker = 'o', label = label[i])
+        else:
+            plt.plot(x, y[i], label = label[i])
+    if len(y)>1: plt.legend();
+    plt.grid()
+    plt.show()
+
+def pyplot_df(data, mode='markers+lines'):
+    df = pd.DataFrame(data)
+    pyplot_scatter(df.index, df.T.values, df.columns, mode)
 
 def plot_scatter(x, y, label, mode='markers+lines'):
     data_plot = []

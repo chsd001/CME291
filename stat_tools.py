@@ -108,16 +108,15 @@ def targetPos(prevx, p, c, l, sigma):
 
 def markowitz(data, retName, predName, covMat, c, l):
     p = data.ticker.unique().size
-    results = pd.DataFrame(index = data.index.unique(), columns = ['value', 'return'])
+    #results = pd.Series(index = data.index.unique(), name='return')
+    results = pd.DataFrame(index = data.index.unique(), columns=['return', 'turnover'])
     curQty = np.zeros(p)
-    curTot = 1
     for d in results.index:
         cross = data.loc[d].sort_values('ticker')
         x = targetPos(curQty, cross[predName].values, c, l, covMat[cross['period'].values[0] - 1])
-        ret = x.dot(cross[retName].values)
-        curTot *= (1+1e-4*ret)
+        ret = x.dot(cross[retName].values)/np.abs(x).sum()
         results.loc[d, 'return'] = ret
-        results.loc[d, 'value'] = curTot
+        results.loc[d, 'turnover'] = np.abs(x-curQty).sum()
         curQty = x
     return results
 
@@ -127,3 +126,16 @@ def computeOU(data, colName):
     eps = np.log(V/C)
     eps = eps.mean().round(3)
     return eps
+
+def evaluate_model(data, startDate, endDate, retName, predName):
+    df = data.loc[startDate:endDate, [retName,predName]]
+    df['day'] = df.index.round('1D') 
+    df = df.groupby('day').apply(lambda x: x.corr().iat[0,1])
+    return df
+    #return pd.Series([df.mean(), df.std()], index = ["mean", "sdev"], name = predName)
+
+def evaluate_strategies(returns, turnovers, fees = 0):
+    returns = pd.DataFrame(returns)
+    turnovers = pd.DataFrame(turnovers)
+    returns = returns - fees*turnovers
+    return pd.concat([0.01*24*returns.mean().rename('Daily return (%)'), np.sqrt(26*365)*(returns.mean()/returns.std()).rename('Annualized Sharpe'), (returns.sum()/turnovers.sum()).rename("Return per unit")], axis=1).round(2)

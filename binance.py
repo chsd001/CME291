@@ -5,7 +5,7 @@ import time
 
 import datetime as dt 
 
-dumpPath = '/home/charbel/Documents/Stanford/Project/data/'
+dumpPath = '/home/charbel/Documents/Stanford/Project/oos/'
 
 ## Get bars for a date and a set of tickers
 def get_bars(date, tickers):
@@ -88,4 +88,4 @@ tickers = [
         'ZRXUSDT' 
 ]
 
-dump_bars('2019-03-12', '2019-03-12', tickers)
+dump_bars('2020-01-01', '2020-02-29', tickers)
